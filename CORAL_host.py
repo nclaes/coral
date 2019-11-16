@@ -262,7 +262,7 @@ def readFastq(filename):
 
 def main():	
 	print('-----------------------------------------------------------------------')
-	np.set_printoptions(threshold=np.nan)
+	np.set_printoptions(threshold=sys.maxsize)
 	# os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 	p = subprocess.run(['pwd'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip() + '/'
 
