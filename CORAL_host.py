@@ -25,50 +25,46 @@ def HCF(x, y):
     return hcf
 
 def print_platforms_and_devices():
-	all_platforms = []
+	all_platforms = dict()
 	platforms = cl.get_platforms()
+	num_plts = 0
 	for pltm in platforms:
 		if(pltm.name[:12] != 'Experimental'):	
 			if(pltm.get_devices(cl.device_type.CPU) != []):
-				all_platforms.append(pltm.get_devices(cl.device_type.CPU))
+				all_platforms[num_plts] = ["CPU", pltm.get_devices(cl.device_type.CPU), cl.Context(devices=pltm.get_devices(cl.device_type.CPU)),pltm]
+				num_plts = num_plts + 1
+				# all_platforms.append(pltm.get_devices(cl.device_type.CPU))
 
 	for pltm in platforms:
 		if(pltm.name[:12] != 'Experimental'):	
 			if(pltm.get_devices(cl.device_type.GPU) != []):
-				all_platforms.append(pltm.get_devices(cl.device_type.GPU))
+				all_platforms[num_plts] = ["GPU",pltm.get_devices(cl.device_type.GPU), cl.Context(devices=pltm.get_devices(cl.device_type.GPU)),pltm]
+				num_plts = num_plts + 1
+	num_devices = 0
+	all_devices = dict()
+	for key,value in all_platforms.items():
+		for i in value[1]:
+			all_devices[num_devices] = [value[0],value[2], i, value[3]] ## Device type, Context, Device name
+			num_devices = num_devices + 1
+	return all_devices
 
-	all_devices = []
-	for i in range(len(all_platforms)):
-		for j in all_platforms[i]:
-			all_devices.append(j)
-	device_platform = dict()
-	for i in range(len(all_devices)):
-		for j in range(len(all_platforms)):
-			if(all_devices[i] in all_platforms[j]):
-				device_platform[i] = j
-	return all_platforms, device_platform, all_devices
-
-def opencl(genome, reads, n, e, device_choices, no_of_reads, no_of_outputs_per_read, tally, SA, F, total_memory_required, share_per_device):	
+def opencl(genome, reads, n, e, device_choices, no_of_reads, no_of_outputs_per_read, tally, SA, F, total_memory_required, share_per_device,q_len):	
 	no_of_reads = np.uint32(no_of_reads)
-	# coverage = np.uint32(math.ceil((no_of_reads*n)/len(genome)))
-	platform_list, device_platform, device_list = print_platforms_and_devices()
-	ctx = []
-	for i in platform_list:
-		ctx.append(cl.Context(devices=i))
-	device_parameters=  dict()
+	# coverage = np.uint32(math.ceil((no_of_reads*n)/len(genome)))	
+	device_list = print_platforms_and_devices()  ## Device type, Context, Device name	
 	n = np.uint32(n)
 	chosen_device_parameters = dict()
 	sufficient_memory = 0	
-	for i in device_choices:
-		if(device_list[i].global_mem_size > total_memory_required):
+	for key,value in device_list.items():
+		if(value[2].global_mem_size > total_memory_required):
 			sufficient_memory = 1
 			# print(device_list[i].global_mem_size, total_memory_required, sufficient_memory)
 		else:
 			sufficient_memory = 0
 			# print(device_list[i].global_mem_size, total_memory_required, sufficient_memory)		
-		chosen_device_parameters[i] = [ctx[device_platform[i]], cl.CommandQueue(ctx[device_platform[i]], device_list[i], cl.command_queue_properties.PROFILING_ENABLE), sufficient_memory, device_platform[i], device_list[i]]
+		chosen_device_parameters[key] = [value[1], cl.CommandQueue(value[1], value[2], cl.command_queue_properties.PROFILING_ENABLE), sufficient_memory, value[3], value[2], value[0]]
 
-	strand_of_read, mapped_endpos_read, cand_locs_per_read = launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, n, no_of_outputs_per_read, e, tally, SA, F, share_per_device, device_choices)
+	strand_of_read, mapped_endpos_read, cand_locs_per_read = launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, n, no_of_outputs_per_read, e, tally, SA, F, share_per_device, device_choices,q_len, device_list)
 	return strand_of_read, mapped_endpos_read, cand_locs_per_read
 
 
@@ -108,7 +104,7 @@ def launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, read_
 	program_compilation_options.append(temp_text)
 	print('-----------------------------------------------------------------------')
 	print('IGNORE THE FOLLOWING MESSAGE')
-	num_reads_alloted = 0
+	# num_reads_alloted = 0
 	program = dict()
 	kernel = dict()
 	Genome = dict()
@@ -137,7 +133,10 @@ def launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, read_
 		print('-----------------------------------------------------------------------')
 		kernel[i] = cl.Kernel(program[i], 'coral')
 
-		num_work_items_per_device[i] = int(HCF(share_per_device[i], 128))
+		if(chosen_device_parameters[i][5] == "CPU"):
+			num_work_items_per_device[i] = int(HCF(share_per_device[i], 128))
+		elif(chosen_device_parameters[i][5] == "GPU"):
+			num_work_items_per_device[i] = int(HCF(share_per_device[i], 32))
 
 		print('{:<25}'.format('Device selected'),':',chosen_device_parameters[i][4].name)
 		print('{:<26}{:<2}{:.1f}'.format('Global MEM size (MB)',':',(chosen_device_parameters[i][4].global_mem_size)/(1024*1024)), 'MB')
@@ -151,7 +150,8 @@ def launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, read_
 		print('{:<75}'.format('Local memory used by the kernel in bytes'),':',kernel[i].get_work_group_info(cl.kernel_work_group_info.LOCAL_MEM_SIZE,chosen_device_parameters[i][4]))
 		print('{:<75}'.format('Private memory used by the kernel in bytes'),':',kernel[i].get_work_group_info(cl.kernel_work_group_info.PRIVATE_MEM_SIZE,chosen_device_parameters[i][4]))
 		print('{:<75}'.format('Work items per work group'),':',num_work_items_per_device[i],'\n')
-		if(chosen_device_parameters[i][3] == 0):# That means its CPU, so the flags will be different
+
+		if(chosen_device_parameters[i][5] == "CPU"):# That means its CPU, so the flags will be different
 			# print('Do not copy data from host to device',i, chosen_device_parameters[i][2], chosen_device_parameters[i][3])
 			Genome[i] = cl.Buffer(chosen_device_parameters[i][0], cl.mem_flags.READ_ONLY | cl.mem_flags.USE_HOST_PTR , hostbuf=genome)
 			kernel[i].set_arg(0, Genome[i])
@@ -173,6 +173,7 @@ def launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, read_
 			buffer_mapped_endpos_read[i] = cl.Buffer(chosen_device_parameters[i][0], cl.mem_flags.WRITE_ONLY | cl.mem_flags.USE_HOST_PTR, hostbuf=mapped_endpos_read[i])
 			kernel[i].set_arg(7, buffer_mapped_endpos_read[i])			
 		else:
+			# print(chosen_device_parameters[i][5],'******************************')
 			# print('Copy data from host to device',i, chosen_device_parameters[i][2], chosen_device_parameters[i][3])
 			Genome[i] = cl.Buffer(chosen_device_parameters[i][0], cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR , hostbuf=genome)
 			kernel[i].set_arg(0, Genome[i])
@@ -193,7 +194,7 @@ def launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, read_
 			mapped_endpos_read[i] = np.zeros(no_of_outputs_per_read*share_per_device[i], np.uint32)
 			buffer_mapped_endpos_read[i] = cl.Buffer(chosen_device_parameters[i][0], cl.mem_flags.WRITE_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=mapped_endpos_read[i])
 			kernel[i].set_arg(7, buffer_mapped_endpos_read[i])		
-		num_reads_alloted += share_per_device[i]		
+		# num_reads_alloted += share_per_device[i]		
 
 	event = dict()
 	start_time = time.time()
@@ -203,7 +204,7 @@ def launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, read_
 
 	for i in device_choices:
 		event[i].wait()
-		if(chosen_device_parameters[i][3] != 0):
+		if(chosen_device_parameters[i][5] != "CPU"):
 			print('Transfer operation involved')
 			q1 = cl.enqueue_copy(chosen_device_parameters[i][1], cand_locs_per_read[i], buffer_cand_locs_per_read[i])
 			q2 = cl.enqueue_copy(chosen_device_parameters[i][1], strand_of_read[i], buffer_strand_of_read[i])
@@ -234,7 +235,10 @@ def Write_Output(cand_locs_per_read, strand, mapped_endpos_read, device_choices,
 					else:
 						strnd = 'R'
 						ed = strand[i][j*no_of_outputs_per_read + k]
-					arr = [sequence_names[read_number][1:], strnd, str(mapped_endpos_read[i][j*no_of_outputs_per_read + k]), str(ed), str(sequences[read_number])]#, str(n)
+					if(k == 0):
+						arr = [sequence_names[read_number][1:], strnd, str(mapped_endpos_read[i][j*no_of_outputs_per_read + k]), str(ed), str(sequences[read_number])]#, str(n)
+					else:
+						arr = [sequence_names[read_number][1:], strnd, str(mapped_endpos_read[i][j*no_of_outputs_per_read + k]), str(ed), "\""]#, str(n)
 					# f.write("{:25}{:^10}{:^22}{:^8}{:^10}{:^150}".format(*arr)+'\n')
 					f.write('\t'.join(arr[0:]) + '\n')
 				read_number += 1
