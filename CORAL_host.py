@@ -48,7 +48,7 @@ def print_platforms_and_devices():
 			num_devices = num_devices + 1
 	return all_devices
 
-def opencl(genome, reads, n, e, device_choices, no_of_reads, no_of_outputs_per_read, tally, SA, F, total_memory_required, share_per_device,q_len):	
+def opencl(genome, reads, n, e, device_choices, no_of_reads, no_of_outputs_per_read, tally, SA, F, total_memory_required, share_per_device):	
 	no_of_reads = np.uint32(no_of_reads)
 	# coverage = np.uint32(math.ceil((no_of_reads*n)/len(genome)))	
 	device_list = print_platforms_and_devices()  ## Device type, Context, Device name	
@@ -64,7 +64,7 @@ def opencl(genome, reads, n, e, device_choices, no_of_reads, no_of_outputs_per_r
 			# print(device_list[i].global_mem_size, total_memory_required, sufficient_memory)		
 		chosen_device_parameters[key] = [value[1], cl.CommandQueue(value[1], value[2], cl.command_queue_properties.PROFILING_ENABLE), sufficient_memory, value[3], value[2], value[0]]
 
-	strand_of_read, mapped_endpos_read, cand_locs_per_read = launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, n, no_of_outputs_per_read, e, tally, SA, F, share_per_device, device_choices,q_len, device_list)
+	strand_of_read, mapped_endpos_read, cand_locs_per_read = launching_kernel(reads, genome, chosen_device_parameters, no_of_reads, n, no_of_outputs_per_read, e, tally, SA, F, share_per_device, device_choices)
 	return strand_of_read, mapped_endpos_read, cand_locs_per_read
 
 
