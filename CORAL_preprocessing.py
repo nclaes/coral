@@ -85,7 +85,7 @@ def build_tally_matrix(F, L):
 def main():
 	print('\n');print('---------------------------------------------------------------------------')
 	print('This process is not parallelised, and hence, takes time. Please wait or use our pre uploaded data.')
-	np.set_printoptions(threshold=np.nan)
+	np.set_printoptions(threshold=sys.maxsize)
 
 	p = subprocess.run(['pwd'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip() + '/'
 
